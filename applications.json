@@ -1,0 +1,40 @@
+[
+  {
+    "user": {
+      "userId": 6313864170,
+      "userName": "He",
+      "age": null,
+      "gender": "S",
+      "field": "s",
+      "position": "S",
+      "place": "S",
+      "phoneNumber": "E"
+    },
+    "job": {
+      "title": "s",
+      "salary": "1882",
+      "location": "He",
+      "time": "Sh"
+    },
+    "appliedAt": "2024-08-16T08:59:25.039Z"
+  },
+  {
+    "user": {
+      "userId": 2021787670,
+      "userName": "Sb",
+      "age": 34,
+      "gender": "M",
+      "field": "hd",
+      "position": "Hsu",
+      "place": "Hsj",
+      "phoneNumber": "0978527227"
+    },
+    "job": {
+      "title": "hd",
+      "salary": "1882",
+      "location": "He",
+      "time": "Sh"
+    },
+    "appliedAt": "2024-08-17T15:39:25.206Z"
+  }
+]

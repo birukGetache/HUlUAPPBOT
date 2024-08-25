@@ -1,0 +1,396 @@
+const TelegramBot = require('node-telegram-bot-api');
+const fs = require('fs');
+const path = require('path');
+
+// Replace with your bot token
+const token = '7527831237:AAHfRM2RCrdho6Fm3F4PDCzL-V-qS79v-zc';
+const bot = new TelegramBot(token, { polling: true });
+
+// File paths for storing user data, job cards, and applications
+const userDataFile = path.join(__dirname, 'user.json');
+const jobDataFile = path.join(__dirname, 'jobs.json');
+const applicationsFile = path.join(__dirname, 'applications.json');
+
+// Initialize files
+if (!fs.existsSync(userDataFile)) {
+  fs.writeFileSync(userDataFile, JSON.stringify({}), 'utf8');
+}
+if (!fs.existsSync(jobDataFile)) {
+  fs.writeFileSync(jobDataFile, JSON.stringify([]), 'utf8');
+}
+if (!fs.existsSync(applicationsFile)) {
+  fs.writeFileSync(applicationsFile, JSON.stringify([]), 'utf8');
+}
+
+// State management
+const userState = {};
+const adminState = {}; // For admin functionalities
+
+// Admin user ID (replace with the actual admin ID)
+const adminId = 2021787670; // Replace with your Telegram user ID
+const applyPhoneNumber = '094143'; // Phone number to be used for apply button
+
+// Handle /start command
+bot.onText(/\/start/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, 'Welcome! Type /register to start the registration process.');
+  bot.sendMessage(chatId, `Your chat ID is: ${chatId}`);
+});
+
+// Handle /register command
+bot.onText(/\/register/, (msg) => {
+  const chatId = msg.chat.id;
+  userState[chatId] = { step: 1 };
+  bot.sendMessage(chatId, 'Please provide your username.');
+});
+
+// Handle user responses
+bot.on('message', (msg) => {
+  const chatId = msg.chat.id;
+  const text = msg.text;
+
+  // User registration flow
+  if (userState[chatId]) {
+    switch (userState[chatId].step) {
+      case 1:
+        userState[chatId].username = text;
+        userState[chatId].step = 2;
+        bot.sendMessage(chatId, 'Please provide your password.');
+        break;
+      case 2:
+        userState[chatId].password = text;
+        userState[chatId].step = 3;
+        bot.sendMessage(chatId, 'Please provide your age.');
+        break;
+      case 3:
+        userState[chatId].age = parseInt(text);
+        userState[chatId].step = 4;
+        bot.sendMessage(chatId, 'Please provide your gender.');
+        break;
+      case 4:
+        userState[chatId].gender = text;
+        userState[chatId].step = 5;
+        bot.sendMessage(chatId, 'Please provide your field of interest.');
+        break;
+      case 5:
+        userState[chatId].field = text.toLowerCase(); // Store in lowercase
+        userState[chatId].step = 6;
+        bot.sendMessage(chatId, 'Please provide your desired position.');
+        break;
+      case 6:
+        userState[chatId].position = text;
+        userState[chatId].step = 7;
+        bot.sendMessage(chatId, 'Please provide your place of residence.');
+        break;
+      case 7:
+        userState[chatId].place = text;
+        userState[chatId].step = 8;
+        bot.sendMessage(chatId, 'Please provide your phone number.');
+        break;
+      case 8:
+        userState[chatId].phoneNumber = text;
+
+        // Save user data to JSON file
+        const userData = userState[chatId];
+        fs.readFile(userDataFile, (err, data) => {
+          if (err) {
+            console.error('Error reading user data file:', err);
+            bot.sendMessage(chatId, 'An error occurred while saving your data.');
+            return;
+          }
+          const jsonData = JSON.parse(data);
+          jsonData[chatId] = userData;
+          fs.writeFile(userDataFile, JSON.stringify(jsonData, null, 2), 'utf8', (err) => {
+            if (err) {
+              console.error('Error writing user data file:', err);
+              bot.sendMessage(chatId, 'An error occurred while saving your data.');
+              return;
+            }
+            bot.sendMessage(chatId, 'Registration complete. Thank you for providing your details.');
+          });
+        });
+
+        // Clear user state
+        delete userState[chatId];
+        break;
+      default:
+        bot.sendMessage(chatId, 'Registration process has expired. Please start over with /register.');
+        delete userState[chatId];
+        break;
+    }
+  } else if (text.startsWith('/edit')) {
+    // Handle editing user data
+    fs.readFile(userDataFile, (err, data) => {
+      if (err) {
+        console.error('Error reading user data file:', err);
+        bot.sendMessage(chatId, 'An error occurred while retrieving your data.');
+        return;
+      }
+      const jsonData = JSON.parse(data);
+      if (jsonData[chatId]) {
+        userState[chatId] = { step: 'edit', ...jsonData[chatId] };
+        bot.sendMessage(chatId, 'Which field would you like to edit? (username, password, age, gender, field, position, place, phoneNumber, add)');
+      } else {
+        bot.sendMessage(chatId, 'You are not registered. Please start the registration process with /register.');
+      }
+    });
+  } else if (userState[chatId] && userState[chatId].step === 'edit') {
+    const fieldToEdit = text.toLowerCase();
+    if (['username', 'password', 'age', 'gender', 'field', 'position', 'place', 'phonenumber', 'add'].includes(fieldToEdit)) {
+      if (fieldToEdit === 'add') {
+        bot.sendMessage(chatId, 'Please provide the name of the new field you want to add.');
+        userState[chatId].step = 'addField';
+      } else {
+        bot.sendMessage(chatId, `Please provide the new value for ${fieldToEdit}.`);
+        userState[chatId].editField = fieldToEdit;
+        userState[chatId].step = 'editValue';
+      }
+    } else {
+      bot.sendMessage(chatId, 'Invalid field. Please choose from (username, password, age, gender, field, position, place, phoneNumber, add).');
+    }
+  } else if (userState[chatId] && userState[chatId].step === 'editValue') {
+    const newValue = text;
+    const fieldToEdit = userState[chatId].editField;
+
+    fs.readFile(userDataFile, (err, data) => {
+      if (err) {
+        console.error('Error reading user data file:', err);
+        bot.sendMessage(chatId, 'An error occurred while retrieving your data.');
+        return;
+      }
+      const jsonData = JSON.parse(data);
+      if (jsonData[chatId]) {
+        jsonData[chatId][fieldToEdit] = fieldToEdit === 'age' ? parseInt(newValue) : newValue;
+        fs.writeFile(userDataFile, JSON.stringify(jsonData, null, 2), 'utf8', (err) => {
+          if (err) {
+            console.error('Error writing user data file:', err);
+            bot.sendMessage(chatId, 'An error occurred while saving your data.');
+            return;
+          }
+          bot.sendMessage(chatId, `Your ${fieldToEdit} has been updated to ${newValue}.`);
+          delete userState[chatId];
+        });
+      } else {
+        bot.sendMessage(chatId, 'An error occurred while updating your data.');
+      }
+    });
+  } else if (userState[chatId] && userState[chatId].step === 'addField') {
+    const newField = text.toLowerCase();
+
+    fs.readFile(userDataFile, (err, data) => {
+      if (err) {
+        console.error('Error reading user data file:', err);
+        bot.sendMessage(chatId, 'An error occurred while retrieving your data.');
+        return;
+      }
+      const jsonData = JSON.parse(data);
+      if (jsonData[chatId]) {
+        jsonData[chatId][newField] = ''; // Initialize with empty value
+        fs.writeFile(userDataFile, JSON.stringify(jsonData, null, 2), 'utf8', (err) => {
+          if (err) {
+            console.error('Error writing user data file:', err);
+            bot.sendMessage(chatId, 'An error occurred while saving your data.');
+            return;
+          }
+          bot.sendMessage(chatId, `Field ${newField} has been added. You can now provide a value for it.`);
+          userState[chatId].editField = newField;
+          userState[chatId].step = 'editValue';
+        });
+      } else {
+        bot.sendMessage(chatId, 'An error occurred while adding the field.');
+      }
+    });
+  } 
+  
+  else if (text.startsWith('/createjob')) {
+    if (chatId === adminId) {
+      userState[chatId] = { step: 'createJob' };
+      bot.sendMessage(chatId, 'Creating a new job. Please provide the job title.');
+    } else {
+      bot.sendMessage(chatId, 'You are not authorized to create jobs.');
+    }
+  } else if (userState[chatId] && userState[chatId].step === 'createJob') {
+    userState[chatId].jobTitle = text;
+    userState[chatId].step = 'createJobDescription';
+    bot.sendMessage(chatId, 'Please provide the job description.');
+  } else if (userState[chatId] && userState[chatId].step === 'createJobDescription') {
+    userState[chatId].jobDescription = text;
+    userState[chatId].step = 'createJobGender';
+    bot.sendMessage(chatId, 'Please specify the gender for the job (M/F/Both).');
+  } else if (userState[chatId] && userState[chatId].step === 'createJobGender') {
+    userState[chatId].gender = text.toUpperCase();
+    userState[chatId].step = 'createJobPhoneNumber';
+    bot.sendMessage(chatId, 'Please provide the job phone number.');
+  } else if (userState[chatId] && userState[chatId].step === 'createJobPhoneNumber') {
+    userState[chatId].phoneNumber = text;
+    userState[chatId].step = 'createJobLocation';
+    bot.sendMessage(chatId, 'Please provide the job location.');
+  } else if (userState[chatId] && userState[chatId].step === 'createJobLocation') {
+    userState[chatId].location = text;
+    userState[chatId].step = 'createJobType';
+    bot.sendMessage(chatId, 'Please provide the job type (Full-time/Part-time).');
+  } else if (userState[chatId] && userState[chatId].step === 'createJobType') {
+    userState[chatId].type = text;
+    userState[chatId].step = 'createJobSalary';
+    bot.sendMessage(chatId, 'Please provide the job salary.');
+  } else if (userState[chatId] && userState[chatId].step === 'createJobSalary') {
+    userState[chatId].salary = text;
+    userState[chatId].step = 'createJobSkills';
+    bot.sendMessage(chatId, 'Please provide the required skills for the job.');
+  } else if (userState[chatId] && userState[chatId].step === 'createJobSkills') {
+    userState[chatId].skills = text;
+    userState[chatId].step = 'createJobSubmit';
+
+    // Save job data to JSON file
+    fs.readFile(jobDataFile, (err, data) => {
+      if (err) {
+        console.error('Error reading job data file:', err);
+        bot.sendMessage(chatId, 'An error occurred while saving the job.');
+        return;
+      }
+      const jsonData = JSON.parse(data);
+      jsonData.push(userState[chatId]);
+      fs.writeFile(jobDataFile, JSON.stringify(jsonData, null, 2), 'utf8', (err) => {
+        if (err) {
+          console.error('Error writing job data file:', err);
+          bot.sendMessage(chatId, 'An error occurred while saving the job.');
+          return;
+        }
+        bot.sendMessage(chatId, 'Job created successfully.');
+        delete userState[chatId];
+      });
+    });
+  } else if (text.startsWith('/apply')) {
+    const jobId = text.split(' ')[1];
+    if (!jobId) {
+      bot.sendMessage(chatId, 'Please provide the job ID to apply for.');
+      return;
+    }
+
+    fs.readFile(jobDataFile, (err, data) => {
+      if (err) {
+        console.error('Error reading job data file:', err);
+        bot.sendMessage(chatId, 'An error occurred while retrieving the job.');
+        return;
+      }
+      const jobs = JSON.parse(data);
+      const job = jobs[jobId];
+      if (!job) {
+        bot.sendMessage(chatId, 'Job not found.');
+        return;
+      }
+
+      fs.readFile(userDataFile, (err, data) => {
+        if (err) {
+          console.error('Error reading user data file:', err);
+          bot.sendMessage(chatId, 'An error occurred while retrieving your data.');
+          return;
+        }
+        const users = JSON.parse(data);
+        const user = users[chatId];
+        if (!user) {
+          bot.sendMessage(chatId, 'You are not registered. Please start the registration process with /register.');
+          return;
+        }
+
+        // Save application to JSON file
+        fs.readFile(applicationsFile, (err, data) => {
+          if (err) {
+            console.error('Error reading applications file:', err);
+            bot.sendMessage(chatId, 'An error occurred while saving your application.');
+            return;
+          }
+          const applications = JSON.parse(data);
+          applications.push({
+            jobId,
+            job,
+            userId: chatId,
+            user
+          });
+          fs.writeFile(applicationsFile, JSON.stringify(applications, null, 2), 'utf8', (err) => {
+            if (err) {
+              console.error('Error writing applications file:', err);
+              bot.sendMessage(chatId, 'An error occurred while saving your application.');
+              return;
+            }
+            bot.sendMessage(chatId, 'Application submitted successfully.');
+          });
+        });
+      });
+    });
+  } else if (text.startsWith('/seeapplications')) {
+    if (chatId === adminId) {
+      const args = text.split(' ');
+      const searchUserId = args[1];
+
+      fs.readFile(applicationsFile, (err, data) => {
+        if (err) {
+          console.error('Error reading applications file:', err);
+          bot.sendMessage(chatId, 'An error occurred while retrieving applications.');
+          return;
+        }
+        const applications = JSON.parse(data);
+        if (searchUserId) {
+          const userApplications = applications.filter(app => app.userId === searchUserId);
+          if (userApplications.length === 0) {
+            bot.sendMessage(chatId, 'No applications found for this user ID.');
+          } else {
+            userApplications.forEach(app => {
+              bot.sendMessage(chatId, `Job ID: ${app.jobId}\nJob Title: ${app.job.jobTitle}\nUser ID: ${app.userId}\nUsername: ${app.user.username}\nPhone Number: ${app.user.phoneNumber}\nGender: ${app.user.gender}\nAge: ${app.user.age}\nField: ${app.user.field}\nPosition: ${app.user.position}\nPlace: ${app.user.place}`);
+            });
+          }
+        } else {
+          if (applications.length === 0) {
+            bot.sendMessage(chatId, 'No applications found.');
+          } else {
+            applications.forEach(app => {
+              bot.sendMessage(chatId, `Job ID: ${app.jobId}\nJob Title: ${app.job.jobTitle}\nUser ID: ${app.userId}\nUsername: ${app.user.username}\nPhone Number: ${app.user.phoneNumber}\nGender: ${app.user.gender}\nAge: ${app.user.age}\nField: ${app.user.field}\nPosition: ${app.user.position}\nPlace: ${app.user.place}`);
+            });
+          }
+        }
+      });
+    } else {
+      bot.sendMessage(chatId, 'You are not authorized to view applications.');
+    }
+  }
+});
+// Handle /seejobs command
+bot.onText(/\/seejobs/, (msg) => {
+    const chatId = msg.chat.id;
+  
+    fs.readFile(userDataFile, (err, data) => {
+      if (err) {
+        console.error('Error reading user data file:', err);
+        bot.sendMessage(chatId, 'An error occurred while retrieving your data.');
+        return;
+      }
+      const users = JSON.parse(data);
+      const user = users[chatId];
+  
+      if (!user) {
+        bot.sendMessage(chatId, 'You are not registered. Please start the registration process with /register.');
+        return;
+      }
+  
+      fs.readFile(jobDataFile, (err, data) => {
+        if (err) {
+          console.error('Error reading job data file:', err);
+          bot.sendMessage(chatId, 'An error occurred while retrieving jobs.');
+          return;
+        }
+        const jobs = JSON.parse(data);
+        const userField = user.field;
+  
+        const matchingJobs = jobs.filter(job => job.jobTitle === userField);
+  
+        if (matchingJobs.length === 0) {
+          bot.sendMessage(chatId, 'No jobs found matching your field of interest.');
+        } else {
+          matchingJobs.forEach(job => {
+            bot.sendMessage(chatId, `Job Title: ${job.jobTitle}\n\nLocation: ${job.location}\n\nSalary: ${job.salary}\nGender: ${job.gender}`);
+          });
+        }
+      });
+    });
+  });
+  
